@@ -1,0 +1,15 @@
+{
+  "name": "wordpress-ftp-git-sync",
+  "version": "0.0.1",
+  "description": "Synchronizes wordpress files using FTP and git",
+  "main": "gulpfile.js",
+  "repository": "https://github.com/jonathanrevell/wordpress-ftp-git-sync.git",
+  "author": "Jonathan Oaklyn <jonathan.oaklyn@busyhuman.io>",
+  "license": "GNU GPLv3",
+  "dependencies": {
+    "config": "^3.3.1",
+    "fancy-log": "^1.3.3",
+    "gulp": "^4.0.2",
+    "vinyl-ftp": "^0.6.1"
+  }
+}
