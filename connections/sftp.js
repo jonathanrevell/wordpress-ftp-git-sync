@@ -152,8 +152,21 @@ const SFTP_TASKS = {
 
 function getRemoteFile(client, remotePath, localPath) {
     // log(`Copying ${remotePath}`);
-    fs.mkdirSync(path.dirname(localPath), { recursive: true });
-    return client.fastGet(remotePath, localPath); 
+    return new Promise((resolve, reject) => {
+        fs.mkdir(path.dirname(localPath), { recursive: true }, (err) => {
+            if(err) {
+                return reject(err);
+            }
+
+            return client.fastGet(remotePath, localPath)
+                .then(() => {
+                    resolve();
+                })
+                .catch(err => {
+                    reject(err);
+                });
+        });
+    });
 }
 
 function queueFilesInDirectory(client, directory) {
