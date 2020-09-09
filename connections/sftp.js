@@ -95,7 +95,8 @@ const SFTP_TASKS = {
         } else if(this.fileQueue.length === 0 && this.directoryQueue.length === 0 && this.mutexCounter <= 0) {
             this.copySpinner.stop();
             clearInterval(this.interval);
-            log("Done!");
+            log("");
+            log(`Done! Downloaded ${this.filesCopied} files`);
             this.drainResolve();
         }
     },
