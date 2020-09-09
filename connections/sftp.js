@@ -51,6 +51,7 @@ const SFTP_TASKS = {
     mutexCounter   : 0,
     filesCopied    : 0,
     filesFound     : 0,
+    directoriesVerified: [], // Array of directories verified as existing. Slight optimization to reduce disk reads
     queueRun() {
         this.drainPromise = new Promise((resolve, reject) => {
             this.drainResolve = resolve;
@@ -119,6 +120,21 @@ const SFTP_TASKS = {
         var percent = ((this.filesCopied / this.filesFound) * 100).toFixed(0);
         this.copySpinner.setSpinnerTitle(`Copying files... (${percent}%) %s`);
     },
+    coerceDirectory(dPath) {
+        if(this.directoriesVerified.indexOf(dPath) === -1) {
+            return new Promise((resolve, reject) => {
+                fs.mkdir(dPath, { recursive: true }, (err) => {
+                    if(err) {
+                        return reject(err);
+                    }
+                    this.directoriesVerified.push(dPath);
+                    resolve();
+                });
+            });            
+        } else {
+            return Promise.resolve();
+        }
+    },
     getRemote() {
         this.client;
         // log("Connecting to host");
@@ -152,21 +168,10 @@ const SFTP_TASKS = {
 
 function getRemoteFile(client, remotePath, localPath) {
     // log(`Copying ${remotePath}`);
-    return new Promise((resolve, reject) => {
-        fs.mkdir(path.dirname(localPath), { recursive: true }, (err) => {
-            if(err) {
-                return reject(err);
-            }
-
+    return SFTP_TASKS.coerceDirectory(path.dirname(localPath))
+        .then(() => {
             return client.fastGet(remotePath, localPath)
-                .then(() => {
-                    resolve();
-                })
-                .catch(err => {
-                    reject(err);
-                });
         });
-    });
 }
 
 function queueFilesInDirectory(client, directory) {
