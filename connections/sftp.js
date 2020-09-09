@@ -4,8 +4,11 @@ const path       = require("path");
 const Client     = require("ssh2-sftp-client");
 const Paths      = require("../paths.js");
 const log        = require("fancy-log");
-const micromatch = require("micromatch");
+const checkPath  = require("./sftp/check-path.js");
+
 const Spinner = require('cli-spinner').Spinner;
+
+const MAX_CONCURRENT = 8;
 
 
 function connect() {
@@ -45,16 +48,18 @@ const SFTP_TASKS = {
     fileQueue      : [],
     client         : null,
     interval       : null,
-    mutex          : null,
+    mutexCounter   : 0,
+    filesCopied    : 0,
+    filesFound     : 0,
     queueRun() {
         this.drainPromise = new Promise((resolve, reject) => {
             this.drainResolve = resolve;
             this.drainReject = reject;
             this.interval = setInterval(() => {
-                if(!this.mutex) {
+                if(this.mutexCounter < MAX_CONCURRENT) {
                     this.queueStep();
                 }
-            }, 100);
+            }, 5);
         });
 
         return this.drainPromise;
@@ -63,28 +68,32 @@ const SFTP_TASKS = {
         if(this.directoryQueue.length > 0) {
             // Process all directories first
             let _obj = this.directoryQueue.shift();
-            this.mutex = true;
+            this.mutexCounter++;
             queueFilesInDirectory(this.client, _obj.directory)
-                .then((() => {
+                .then(() => {
                     // log(`Found ${this.fileQueue.length} files`);
                     SFTP_TASKS.discoverSpinner.setSpinnerTitle(`Discovering files... (${this.fileQueue.length}) %s`);
-                    this.mutex = null;
-                }))
+                    this.mutexCounter--;
+                })
                 .catch(err => {
                     console.error(err);
-                    this.mutex = null;
+                    this.mutexCounter--;
                 });
             
-        } else if(this.fileQueue.length > 0) {
+        } else if(this.fileQueue.length > 0 && this.mutexCounter <= 0) {
             // Then start copying files
             this.discoveryPhaseDone();
+            this.startCopyPhase();
             let {remotePath, localPath} = this.fileQueue.shift();
-            this.mutex = true;
+            this.mutexCounter++;
             getRemoteFile(this.client, remotePath, localPath)
                 .then(() => {
-                    this.mutex = null;
+                    this.filesCopied++;
+                    this.updateCopySpinner();
+                    this.mutexCounter--;
                 })
-        } else {
+        } else if(this.fileQueue.length === 0 && this.directoryQueue.length === 0 && this.mutexCounter <= 0) {
+            this.copySpinner.stop();
             clearInterval(this.interval);
             log("Done!");
             this.drainResolve();
@@ -95,6 +104,19 @@ const SFTP_TASKS = {
             SFTP_TASKS.discoverSpinner.stop();
             SFTP_TASKS.discoverSpinner = null;
         }
+    },
+    startCopyPhase() {
+        if(!this.copySpinner) {
+            this.filesFound = this.fileQueue.length;
+        
+            this.copySpinner = new Spinner("Copying... %s");
+            this.copySpinner.setSpinnerString('|/-\\');
+            this.copySpinner.start();
+        }
+    },
+    updateCopySpinner() {
+        var percent = ((this.filesCopied / this.filesFound) * 100).toFixed(0);
+        this.copySpinner.setSpinnerTitle(`Copying files... (${percent}%) %s`);
     },
     getRemote() {
         this.client;
@@ -107,7 +129,7 @@ const SFTP_TASKS = {
                 connectSpinner.stop();
                 SFTP_TASKS.client = sftp;
                 SFTP_TASKS.directoryQueue.push({ directory: "" });
-                // log("Discovering files");
+
                 SFTP_TASKS.discoverSpinner = new Spinner("Discovering files... %s");
                 SFTP_TASKS.discoverSpinner.setSpinnerString('|/-\\');
                 SFTP_TASKS.discoverSpinner.start();
@@ -128,7 +150,7 @@ const SFTP_TASKS = {
 }
 
 function getRemoteFile(client, remotePath, localPath) {
-    log(`Copying ${remotePath}`);
+    // log(`Copying ${remotePath}`);
     fs.mkdirSync(path.dirname(localPath), { recursive: true });
     return client.fastGet(remotePath, localPath); 
 }
@@ -168,96 +190,6 @@ function queueFilesInDirectory(client, directory) {
         });
 }
 
-/**
- * Must match ANY positive pattern and must NOT fail ANY negative pattern
- * @param {*} relativePath 
- * @param {*} type 
- */
-function checkPath(relativePath, type) {
-    var includeMatch = Paths.include.length === 0 || micromatch.isMatch(relativePath, Paths.include);
-    var excludeMatch = Paths.exclude.length === 0 ? false : micromatch.isMatch(relativePath, Paths.exclude, { matchBase: true });
-
-    if(excludeMatch) {
-        return false;
-    }
-    if(includeMatch) {
-        return true;
-    }
-
-    // If the current path is a directory then allow "anticipatory" matches
-    // Meaning, if a partial pattern matches a partial path, then keep exploring
-    if(type === "d") {
-        var anyMatches = false;
-        Paths.include.forEach(p => {
-            let patternSegments = p.split("/");
-            let pathSegments = relativePath.split("/");
-
-            if(patternSegments.length > 0 && patternSegments[0] === "") {
-                patternSegments.shift();
-            }
-            if(pathSegments.length > 0 && pathSegments[0] === "") {
-                pathSegments.shift();
-            }
-    
-            let workingPath = pathSegments.shift();
-            let workingPattern = patternSegments.shift();
-
-            let pathSeg = workingPath;
-            let patternSeg = workingPattern;
-            let patternSegmentMatches = 0;
-    
-            var isMatching = micromatch.isMatch(workingPath, workingPattern);
-
-            function useNextPatternSegment() {
-                patternSeg = patternSegments.shift();
-                workingPattern += "/" + patternSeg;
-                patternSegmentMatches = 0;
-            }
-    
-            // Keep working through the path segments as long as they satisfy the pattern segments
-            // Stop once we've evaluated the entire path
-            while(pathSegments.length > 0 && isMatching) {
-                pathSeg = pathSegments.shift();
-                workingPath += "/" + pathSeg;
-                patternSegmentMatches++;
-                let mm = micromatch.scan(patternSeg);
-
-                if(patternSegments.length > 0) {
-                        
-                    if(mm.isGlobstar && pathSegments.length > 0) {
-                        let nextPathSeg = pathSegments[0];
-                        let nextPatternSeg = patternSegments[0];
-
-                        // Keep matching the globstar 
-                        // until the next path segment matches the next pattern segment
-                        if(micromatch.isMatch(nextPathSeg, nextPatternSeg)) {
-                            useNextPatternSegment();
-                        }
-                    } else {
-                        useNextPatternSegment();
-                    }
-                } else if(!mm.isGlobstar) {
-                    isMatching = false;
-                    break;
-                }
-
-                if(micromatch.isMatch(workingPath, workingPattern)) {
-                    isMatching = true;
-                } else {
-                    isMatching = false;
-                    break;
-                }
-            }
-            if(isMatching) {
-                anyMatches = true;
-            }
-        });
-
-        return anyMatches;
-    } else {
-        return false;
-    }
-}
 
 module.exports = SFTP_TASKS;
 
