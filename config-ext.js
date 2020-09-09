@@ -37,3 +37,46 @@ config.demand = function( ...settingArray ) {
         return results;
     }
 };
+
+/**
+ * Returns the first setting that has a value in the array
+ * Or, if there is no match, throws an exception
+ * @param  {...any} settingArray 
+ */
+config.demandOneOf = function( ...settingArray ) {
+    var match = undefined;
+    for(let i = 0; i < settingArray.length; i++) {
+        let setting = settingArray[i];
+        if(config.has(setting)) {
+            match = setting;
+            break;
+        }
+    }
+
+    if(match === undefined) {
+        throw new Error(`Config requires one of ${settingArray.join(', ')}`);
+    }
+    return config.get(match);
+}
+
+/**
+ * Returns the first setting that has a value in the array
+ * or the default value if no settings specified exist
+ * @param  {...any} settingArray 
+ */
+config.getOneOf = function( defaultValue, ...settingArray ) {
+    var match = undefined;
+    for(let i = 0; i < settingArray.length; i++) {
+        let setting = settingArray[i];
+        if(config.has(setting)) {
+            match = setting;
+            break;
+        }
+    }
+
+    if(match === undefined) {
+        return defaultValue;
+    } else {
+        return config.get(match);
+    }
+}
