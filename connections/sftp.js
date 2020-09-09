@@ -51,6 +51,7 @@ const SFTP_TASKS = {
     mutexCounter   : 0,
     filesCopied    : 0,
     filesFound     : 0,
+    filesSkipped   : 0,
     directoriesVerified: [], // Array of directories verified as existing. Slight optimization to reduce disk reads
     queueRun() {
         this.drainPromise = new Promise((resolve, reject) => {
@@ -85,11 +86,19 @@ const SFTP_TASKS = {
             // Then start copying files
             this.discoveryPhaseDone();
             this.startCopyPhase();
-            let {remotePath, localPath} = this.fileQueue.shift();
+            let {remotePath, localPath, remoteStat} = this.fileQueue.shift();
             this.mutexCounter++;
-            getRemoteFile(this.client, remotePath, localPath)
+            return shouldGetRemoteFile(remoteStat, localPath, { compareSize: true })
+                .then(shouldCopy => {
+                    if(shouldCopy) {
+                        this.filesCopied++;
+                        return getRemoteFile(this.client, remotePath, localPath)
+                    } else {
+                        this.filesSkipped++;
+                        return false;
+                    }
+                })
                 .then(() => {
-                    this.filesCopied++;
                     this.updateCopySpinner();
                     this.mutexCounter--;
                 })
@@ -97,7 +106,7 @@ const SFTP_TASKS = {
             this.copySpinner.stop();
             clearInterval(this.interval);
             log("");
-            log(`Done! Downloaded ${this.filesCopied} files`);
+            log(`Done! Downloaded ${this.filesCopied} files, skipped ${this.filesSkipped}`);
             this.drainResolve();
         }
     },
@@ -166,6 +175,60 @@ const SFTP_TASKS = {
     }
 }
 
+function fsAccessPromise(file, mode) {
+    return new Promise((resolve, reject) => {
+        fs.access(file, mode, (err) => {
+            if(err) {
+                reject(err);
+            } else {
+                resolve(true);
+            }
+        });
+    });
+}
+
+function localFileExists(file) {
+    return fsAccessPromise(file, fs.constants.F_OK)
+        .then(() => {
+            return true;
+        })
+        .catch(err => {
+            return false;
+        });
+}
+function fsStatPromise(file) {
+    return new Promise((resolve, reject) => {
+        fs.stat(file, (err, stats) => {
+            if(err) {
+                reject(err);
+            } else {
+                resolve(stats);
+            }
+        });
+    });
+}
+
+function remoteFileSizeDifferent(remoteStat, localPath) {
+    return fsStatPromise(localPath)
+        .then(localStats => {
+            return localStats.size !== remoteStat.size;
+        });
+}
+
+function shouldGetRemoteFile(remoteStat, localPath, { compareSize = false }={}) {
+    return localFileExists(localPath)
+        .then(exists => {
+            if(!exists) {
+                return true;
+            }
+            if(compareSize) {
+                return remoteFileSizeDifferent(remoteStat, localPath);
+            } else {
+                return false;
+            }
+        });
+}
+
 function getRemoteFile(client, remotePath, localPath) {
     // log(`Copying ${remotePath}`);
     return SFTP_TASKS.coerceDirectory(path.dirname(localPath))
@@ -198,7 +261,7 @@ function queueFilesInDirectory(client, directory) {
                 } else if(matches) {
                     // log(`Queued ${remotePath}`);
                     fileCounter++;
-                    return SFTP_TASKS.fileQueue.push({ remotePath, localPath });
+                    return SFTP_TASKS.fileQueue.push({ remotePath, localPath, remoteStat: f });
                 } else {
                     // log(`Skipping ${remotePath}`);
                 }
