@@ -83,25 +83,8 @@ const SFTP_TASKS = {
                 });
             
         } else if(this.fileQueue.length > 0 && this.mutexCounter <= 0) {
-            // Then start copying files
-            this.discoveryPhaseDone();
-            this.startCopyPhase();
-            let {remotePath, localPath, remoteStat} = this.fileQueue.shift();
-            this.mutexCounter++;
-            return shouldGetRemoteFile(remoteStat, localPath, { compareSize: true })
-                .then(shouldCopy => {
-                    if(shouldCopy) {
-                        this.filesCopied++;
-                        return getRemoteFile(this.client, remotePath, localPath)
-                    } else {
-                        this.filesSkipped++;
-                        return false;
-                    }
-                })
-                .then(() => {
-                    this.updateCopySpinner();
-                    this.mutexCounter--;
-                })
+            this.queueStepFiles();
+
         } else if(this.fileQueue.length === 0 && this.directoryQueue.length === 0 && this.mutexCounter <= 0) {
             this.copySpinner.stop();
             clearInterval(this.interval);
@@ -109,6 +92,29 @@ const SFTP_TASKS = {
             log(`Done! Downloaded ${this.filesCopied} files, skipped ${this.filesSkipped}`);
             this.drainResolve();
         }
+    },
+    queueStepFiles() {
+        // Then start copying files
+        this.discoveryPhaseDone();
+        this.startCopyPhase();
+        let {remotePath, localPath, remoteStat} = this.fileQueue.shift();
+        this.mutexCounter++;
+        var changesOnly = !SFTP_TASKS.argv.all;
+
+        return shouldGetRemoteFile(remoteStat, localPath, { changesOnly })
+            .then(shouldCopy => {
+                if(shouldCopy) {
+                    this.filesCopied++;
+                    return getRemoteFile(this.client, remotePath, localPath)
+                } else {
+                    this.filesSkipped++;
+                    return false;
+                }
+            })
+            .then(() => {
+                this.updateCopySpinner();
+                this.mutexCounter--;
+            })
     },
     discoveryPhaseDone() {
         if(SFTP_TASKS.discoverSpinner) {
@@ -215,16 +221,19 @@ function remoteFileSizeDifferent(remoteStat, localPath) {
         });
 }
 
-function shouldGetRemoteFile(remoteStat, localPath, { compareSize = false }={}) {
+function shouldGetRemoteFile(remoteStat, localPath, { changesOnly = false }={}) {
+    if(!changesOnly) {
+        return Promise.resolve(true);
+    }
     return localFileExists(localPath)
         .then(exists => {
             if(!exists) {
                 return true;
             }
-            if(compareSize) {
+            if(changesOnly) {
                 return remoteFileSizeDifferent(remoteStat, localPath);
             } else {
-                return false;
+                return true;
             }
         });
 }
