@@ -22,7 +22,8 @@ if(protocol === "ftp") {
     exports.get = FTP_TASKS.getRemote;
     exports.put = FTP_TASKS.putLocal;
 } else if(protocol === "sftp") {
-    exports.get = SFTP_TASKS.getRemote;
-    exports.put = SFTP_TASKS.putLocal;
+    exports.get = SFTP_TASKS.getRemoteFiles;
+    exports.put = SFTP_TASKS.putLocalFiles;
+    exports.grantPermissions = require("./connections/sftp/grant-permissions.js")
 }
 

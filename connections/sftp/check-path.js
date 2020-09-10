@@ -6,7 +6,7 @@ const micromatch = require("micromatch");
  * @param {*} relativePath 
  * @param {*} type 
  */
-function checkPath(relativePath, type) {
+function checkPath(relativePath, isDirectory) {
     var includeMatch = Paths.include.length === 0 || micromatch.isMatch(relativePath, Paths.include);
     var excludeMatch = Paths.exclude.length === 0 ? false : micromatch.isMatch(relativePath, Paths.exclude, { matchBase: true });
 
@@ -19,7 +19,7 @@ function checkPath(relativePath, type) {
 
     // If the current path is a directory then allow "anticipatory" matches
     // Meaning, if a partial pattern matches a partial path, then keep exploring
-    if(type === "d") {
+    if(isDirectory) {
         var anyMatches = false;
         Paths.include.forEach(p => {
             let patternSegments = p.split("/");

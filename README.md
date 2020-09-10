@@ -45,3 +45,7 @@ The easiest way to configure the software, or at least to get started, is to cre
 By default, get will only pull files you don't have or that are a different size than what you have. If you want to download every file, use the --all flag.
 
 ### get --all
+
+## grantPermissions
+
+SFTP ONLY: Uses SSH to update a unix system's permissions to permit access to the underlying files.
