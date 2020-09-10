@@ -1,6 +1,6 @@
-# ftp-git-sync
+# sftp-sync
 
-Synchronizes files using FTP and git for a static site, web app, service, and more. As long as your endpoint supports FTP or SFTP then you can use this.
+Synchronizes files using FTP, SFTP, and git for a static site, web app, service, and more. As long as your endpoint supports FTP or SFTP then you can use this.
 
 This is particularly useful for Wordpress, which has inconsistent or even poor git support. Properly setting up git on some of these servers can be a challenge, or sometimes even impossible. As long as the server supports FTP or SFTP, this tool will help you sync with git.
 
@@ -49,3 +49,8 @@ By default, get will only pull files you don't have or that are a different size
 ## grantPermissions
 
 **SFTP ONLY:** Uses SSH to update a unix system's permissions to permit access to the underlying files. If you get a permission denied error while trying to upload files to your FTP server try running this command. Note that this grants permissions specifically to remoteRootPath. If you change this value you may need to run this command again.
+
+
+## Git support
+
+Git support coming soon. This functionality would allow the remote to have a pseudo relationship with the git repository without having to actually set up Git on the remote.

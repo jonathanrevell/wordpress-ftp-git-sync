@@ -3,6 +3,8 @@
 const config = require("config");
 const path   = require("path");
 
+config.util.getConfigSources();
+
 var yargs = require("yargs")
     .boolean("all");
 

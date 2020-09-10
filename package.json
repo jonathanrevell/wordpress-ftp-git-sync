@@ -1,11 +1,14 @@
 {
-  "name": "wordpress-ftp-git-sync",
-  "version": "0.0.1",
-  "description": "Synchronizes wordpress files using FTP and git",
+  "name": "sftp-sync",
+  "version": "1.0.0",
+  "description": "Synchronizes remote files using SFTP, FTP and git",
   "main": "gulpfile.js",
-  "repository": "https://github.com/jonathanrevell/wordpress-ftp-git-sync.git",
+  "repository": "https://github.com/jonathanrevell/ftp-sync.git",
   "author": "Jonathan Oaklyn <jonathan.oaklyn@busyhuman.io>",
   "license": "GNU GPLv3",
+  "bin": {
+    "sftp-sync": "./cli.js"
+  },
   "dependencies": {
     "bluebird": "^3.7.2",
     "cli-spinner": "^0.2.10",
