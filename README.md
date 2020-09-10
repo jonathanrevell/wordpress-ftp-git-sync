@@ -48,4 +48,4 @@ By default, get will only pull files you don't have or that are a different size
 
 ## grantPermissions
 
-SFTP ONLY: Uses SSH to update a unix system's permissions to permit access to the underlying files.
+**SFTP ONLY:** Uses SSH to update a unix system's permissions to permit access to the underlying files. If you get a permission denied error while trying to upload files to your FTP server try running this command. Note that this grants permissions specifically to remoteRootPath. If you change this value you may need to run this command again.
