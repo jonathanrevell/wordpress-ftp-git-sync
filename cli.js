@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-const config = require("config");
 const path   = require("path");
+process.env["NODE_CONFIG_DIR"] = path.join(process.cwd(), "config");    // https://github.com/lorenwest/node-config/wiki/Configuration-Files
 
-config.util.getConfigSources();
+const config = require("config");
 
 var yargs = require("yargs")
     .boolean("all")
