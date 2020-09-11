@@ -1,6 +1,6 @@
 {
   "name": "sftp-sync",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Synchronizes remote files using SFTP, FTP and git",
   "main": "gulpfile.js",
   "repository": "https://github.com/jonathanrevell/ftp-sync.git",
