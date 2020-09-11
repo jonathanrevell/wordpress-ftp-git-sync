@@ -178,7 +178,7 @@ const SFTP_TASKS = {
                         // 2. Get stats about the files
                         // Since these are guaranteed to be files, path.dirname will behave consistently
                         let localPath = path.join(process.cwd(), gitRelativePath);
-                        let directory = path.dirname( localPath.replace(process.cwd(), "") );
+                        let directory = path.dirname( localPath.replace(Paths.local.root, "") );
                         return wrappedLocalFileStat(localPath, directory);
                     });
                 })
@@ -356,6 +356,7 @@ function putLocalFile(client, remotePath, localPath) {
     // log(`Mock upload from ${localPath} to ${remotePath}`);
     return client.mkdir(path.dirname(remotePath), true)
         .then(() => {
+            log(`Copying ${localPath} to ${remotePath}`);
             return client.fastPut(localPath, remotePath);
         });
     // return Promise.resolve();
