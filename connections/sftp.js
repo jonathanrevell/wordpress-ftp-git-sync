@@ -222,7 +222,7 @@ const SFTP_TASKS = {
                 SFTP_TASKS.discoverSpinner = new Spinner("Discovering files... %s");
                 SFTP_TASKS.discoverSpinner.setSpinnerString('|/-\\');
                 SFTP_TASKS.discoverSpinner.start();                
-                return this.initializeQueue();
+                return this.initializeQueue(SFTP_TASKS.client);
             })
             .then(() => {
                 return SFTP_TASKS.queueRun();
