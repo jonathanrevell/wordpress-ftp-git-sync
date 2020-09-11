@@ -6,12 +6,12 @@ const Paths      = require("../paths.js");
 const log        = require("fancy-log");
 const checkPath  = require("./sftp/check-path.js");
 const Promise    = require("bluebird");
+const gitHelper  = require("./sftp/git.js");
 
 const Spinner = require('cli-spinner').Spinner;
 const resolveSSHCredentials = require("./sftp/resolve-credentials.js");
 
 const MAX_CONCURRENT = 8;
-
 
 function connect() {
     var sftp = new Client();
@@ -163,7 +163,55 @@ const SFTP_TASKS = {
             this.discoverSpinner.stop();
         }
     },
+    initializeQueue(client) {
+        if(this.argv.git) {
+            log(`Syncing files based on uncommitted git files`);
+            // GIT strategy; sync all the uncommitted files that match the patterns
+
+            // 1. Get the changed files
+            return gitHelper.getChanges()
+                .then(status => {
+                    
+                    let files = [].concat(status.modified, status.created, status.not_added, status.renamed);
+                    log(`Uncommitted file changes found: ` + files.join(", "));
+                    return Promise.mapSeries(files, gitRelativePath => {
+                        // 2. Get stats about the files
+                        // Since these are guaranteed to be files, path.dirname will behave consistently
+                        let localPath = path.join(process.cwd(), gitRelativePath);
+                        let directory = path.dirname( localPath.replace(process.cwd(), "") );
+                        return wrappedLocalFileStat(localPath, directory);
+                    });
+                })
+                .then(files => {              
+                    files = files.filter(f => {
+                        // 3. Filter the files based on the include/exclude patterns
+                        let relativePath = f.path.replace( Paths.local.root, "");
+                        return checkPath(relativePath, false);
+                    });
+
+                    if(files.length === 0) {
+                        log(`No files matching patterns found`);
+                    }
+
+                    // 4. Mirror the file stats with their remote counterparts
+                    return mirrorFileStats(client, files, "remote");
+                })
+                .then(pairs => {
+                    // 5. Queue the files for synchronization
+                    pairs.forEach(pair => {
+                        return SFTP_TASKS.fileQueue.push({ remotePath: pair.remote.path, localPath: pair.local.path, remoteStat: pair.remote, localStat: pair.local });
+                    });
+                    return true;
+                });
+        } else {
+            log(`Syncing files through discovery walking the file system`);
+            // DEFAULT strategy: walk the directories to find files that match the patterns
+            SFTP_TASKS.directoryQueue.push({ directory: "" });
+            return Promise.resolve();
+        }
+    },
     setupJob() {
+        log(`Connecting via SFTP to ${config.get("sftp.host")}`);
         var connectSpinner = new Spinner("Connecting... %s");
         connectSpinner.setSpinnerString('|/-\\');
         connectSpinner.start();
@@ -171,11 +219,12 @@ const SFTP_TASKS = {
             .then(sftp => {
                 connectSpinner.stop();
                 SFTP_TASKS.client = sftp;
-                SFTP_TASKS.directoryQueue.push({ directory: "" });
-
                 SFTP_TASKS.discoverSpinner = new Spinner("Discovering files... %s");
                 SFTP_TASKS.discoverSpinner.setSpinnerString('|/-\\');
-                SFTP_TASKS.discoverSpinner.start();
+                SFTP_TASKS.discoverSpinner.start();                
+                return this.initializeQueue();
+            })
+            .then(() => {
                 return SFTP_TASKS.queueRun();
             })
             .then(() => {
@@ -187,14 +236,17 @@ const SFTP_TASKS = {
                 console.error(err);
             });
     },
-    getRemoteFiles() {
+    getRemoteFiles(argv) {
+        this.argv = argv;
         SFTP_TASKS.copyingTo = "local";
         SFTP_TASKS.maxConcurrent = MAX_CONCURRENT;
         return SFTP_TASKS.setupJob();
     },
-    putLocalFiles() {
+    putLocalFiles(argv) {
+        this.argv = argv;
         SFTP_TASKS.copyingTo = "remote";
         SFTP_TASKS.maxConcurrent = 1;
+        
         return SFTP_TASKS.setupJob();
     }
 }
@@ -302,7 +354,10 @@ function getRemoteFile(client, remotePath, localPath) {
 
 function putLocalFile(client, remotePath, localPath) {
     // log(`Mock upload from ${localPath} to ${remotePath}`);
-    return client.fastPut(localPath, remotePath);
+    return client.mkdir(path.dirname(remotePath), true)
+        .then(() => {
+            return client.fastPut(localPath, remotePath);
+        });
     // return Promise.resolve();
 }
 
@@ -331,13 +386,21 @@ function remotePathFromLocalFile(localFile) {
     return path.join(Paths.remote.root, localFile.directory, localFile.name);
 }
 
+function localPathFromRelativePath(relativePath) {
+    return path.join(Paths.local.root, relativePath);
+}
+
+function remotePathFromRelativePath(relativePath) {
+    return path.join(Paths.remote.root, relativePath);
+}
+
 /**
  * Given an array of files from one location (e.g. remote) get information about the files in the other location (e.g. local)
  * @param {Array} files 
- * @param {String} mirrorWith - "remote" or "local"
+ * @param {String} mirrorIs - Whether the mirorr should be made of "remote" or "local" files
  */
-function mirrorFileStats(client, files, mirrorWith) {
-    if(mirrorWith === "local") {
+function mirrorFileStats(client, files, mirrorIs) {
+    if(mirrorIs === "local") {
         return Promise.mapSeries( files, f => {
             var localPath = localPathFromRemoteFile(f);
             return localFileExists(localPath)
@@ -364,7 +427,7 @@ function mirrorFileStats(client, files, mirrorWith) {
                     };
                 });
         });
-    } else if(mirrorWith === "remote") {
+    } else if(mirrorIs === "remote") {
         // Mirror with remote
         return Promise.mapSeries( files, f => {
             var remotePath = remotePathFromLocalFile(f);
@@ -393,7 +456,7 @@ function mirrorFileStats(client, files, mirrorWith) {
                 });
         });
     } else {
-        throw new Error(`Unrecognized mirrorWith target: ${mirrorWith}`);
+        throw new Error(`Unrecognized mirrorIs target: ${mirrorIs}`);
     }
 }
 

@@ -50,7 +50,8 @@ By default, get will only pull files you don't have or that are a different size
 
 **SFTP ONLY:** Uses SSH to update a unix system's permissions to permit access to the underlying files. If you get a permission denied error while trying to upload files to your FTP server try running this command. Note that this grants permissions specifically to remoteRootPath. If you change this value you may need to run this command again.
 
+## put
 
-## Git support
+### put --git
 
-Git support coming soon. This functionality would allow the remote to have a pseudo relationship with the git repository without having to actually set up Git on the remote.
+Uploads files with uncommitted changes in git which also satisfy the patterns in the configuration. This would allow you to modify files, and upload only those files that are modified without having to individually track down the changes or re-scan all the files for every sync.
