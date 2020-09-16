@@ -2,7 +2,7 @@ const Client = require("ssh2").Client;
 const config = require("config");
 const resolveSSHCredentials = require("./resolve-credentials.js");
 
-const GROUP = "ftpsync";
+const GROUP = "www-data";
 
 const connectionConfig = {
     host: config.get("sftp.host"),
